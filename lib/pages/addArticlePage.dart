@@ -1,22 +1,65 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:location/location.dart';
 
-class AddArticlePage extends StatelessWidget {
+class AddArticlePage extends StatefulWidget {
   const AddArticlePage({Key? key}) : super(key: key);
 
   @override
+  _AddArticlePageState createState() => _AddArticlePageState();
+}
+
+class _AddArticlePageState extends State<AddArticlePage> {
+  String currentDateTime = DateTime.now().toString();
+  LocationData? _currentLocation;
+  TextEditingController marqueController = TextEditingController();
+  TextEditingController modeleController = TextEditingController();
+  TextEditingController caracteristiquesController = TextEditingController();
+  TextEditingController prixController = TextEditingController();
+  TextEditingController quantiteController = TextEditingController(text: '1');
+  TextEditingController idVendeurController = TextEditingController(text: '0');
+  TextEditingController statutController = TextEditingController(text: 'Disponible');
+
+  String baseUrl = 'http://172.20.10.2';
+
+  @override
+  void initState() {
+    super.initState();
+    _getLocation();
+  }
+
+  Future<void> _getLocation() async {
+    Location location = Location();
+    bool _serviceEnabled;
+    PermissionStatus _permissionGranted;
+    LocationData _locationData;
+
+    _serviceEnabled = await location.serviceEnabled();
+    if (!_serviceEnabled) {
+      _serviceEnabled = await location.requestService();
+      if (!_serviceEnabled) {
+        return;
+      }
+    }
+
+    _permissionGranted = await location.hasPermission();
+    if (_permissionGranted == PermissionStatus.denied) {
+      _permissionGranted = await location.requestPermission();
+      if (_permissionGranted != PermissionStatus.granted) {
+        return;
+      }
+    }
+
+    _locationData = await location.getLocation();
+    setState(() {
+      _currentLocation = _locationData;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-
-    String currentDate = DateTime.now().toString();
-
-    TextEditingController marqueController = TextEditingController();
-    TextEditingController modeleController = TextEditingController();
-    TextEditingController caracteristiquesController = TextEditingController();
-    TextEditingController prixController = TextEditingController();
-
-    String baseUrl = 'http://172.20.10.2';
-
     return Scaffold(
       appBar: AppBar(
         title: Text('Ajouter un Article'),
@@ -26,61 +69,65 @@ class AddArticlePage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Marque',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
             TextField(
               decoration: InputDecoration(
-                hintText: 'Entrez la marque',
+                labelText: 'Marque',
               ),
               controller: marqueController,
             ),
-            SizedBox(height: 16.0),
-            Text(
-              'Modèle',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
             TextField(
               decoration: InputDecoration(
-                hintText: 'Entrez le modèle',
+                labelText: 'Modèle',
               ),
               controller: modeleController,
             ),
-            SizedBox(height: 16.0),
-            Text(
-              'Caractéristiques',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
             TextField(
               decoration: InputDecoration(
-                hintText: 'Entrez les caractéristiques',
+                labelText: 'Caractéristiques',
               ),
               controller: caracteristiquesController,
             ),
-            SizedBox(height: 16.0),
-            Text(
-              'Prix',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Prix',
+              ),
+              controller: prixController,
+              keyboardType: TextInputType.number,
             ),
             TextField(
               decoration: InputDecoration(
-                hintText: 'Entrez le prix',
+                labelText: 'Quantité',
               ),
-              controller: prixController,
+              controller: quantiteController,
+              keyboardType: TextInputType.number,
             ),
-            SizedBox(height: 16.0),
-            Container(
-              height: 0,
-              width: 0,
-              child: TextField(
-                decoration: InputDecoration(
-                  hintText: 'Entrez la date de publication',
-                ),
-                controller: TextEditingController(text: currentDate),
-                readOnly: true,
-                enabled: false,
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'ID Vendeur',
               ),
+              controller: idVendeurController,
+              keyboardType: TextInputType.number,
+              enabled: false,
+            ),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Latitude',
+              ),
+              controller: TextEditingController(text: _currentLocation?.latitude.toString()),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Longitude',
+              ),
+              controller: TextEditingController(text: _currentLocation?.longitude.toString()),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Statut',
+              ),
+              controller: statutController,
             ),
             SizedBox(height: 16.0),
             ElevatedButton(
@@ -89,9 +136,10 @@ class AddArticlePage extends StatelessWidget {
                 String marque = marqueController.text;
                 String modele = modeleController.text;
                 String caracteristiques = caracteristiquesController.text;
-                double prix = double.parse(prixController.text);
-                int quantite = 0; // Remplacez par la quantité réelle
-                int idVendeur = 0; // Remplacez par l'ID du vendeur réel
+                double prix = double.tryParse(prixController.text) ?? 0.0;
+                int quantite = int.tryParse(quantiteController.text) ?? 1;
+                int idVendeur = 0;
+                String statut = statutController.text;
 
                 // Créer l'objet JSON à envoyer
                 Map<String, dynamic> data = {
@@ -101,28 +149,35 @@ class AddArticlePage extends StatelessWidget {
                   'Prix': prix,
                   'Quantite': quantite,
                   'ID_Vendeur': idVendeur,
-                  // Vous pouvez laisser la date de publication être gérée par le serveur
+                  'DatePublication': currentDateTime,
+                  'Latitude': _currentLocation?.latitude,
+                  'Longitude': _currentLocation?.longitude,
+                  'Statut': statut,
                 };
 
-                // Envoyer les données à votre service
                 try {
-                  final response = await http.post(
-                    Uri.parse('$baseUrl/add'), // Remplacez baseUrl par votre URL de service
-                    headers: <String, String>{
-                      'Content-Type': 'application/json',
-                    },
-                    body: jsonEncode(data),
-                  );
+                  final SharedPreferences prefs = await SharedPreferences.getInstance();
+                  final String? token = prefs.getString('token');
 
-                  if (response.statusCode == 200) {
-                    // Succès : Affichez un message ou effectuez une action supplémentaire si nécessaire
-                    print('Article ajouté avec succès !');
+                  if (token != null) {
+                    final response = await http.post(
+                      Uri.parse('$baseUrl/ApiTelephone/add'),
+                      headers: <String, String>{
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer $token',
+                      },
+                      body: jsonEncode(data),
+                    );
+
+                    if (response.statusCode == 200) {
+                      print('Article ajouté avec succès !');
+                    } else {
+                      print('Erreur lors de l\'ajout de l\'article : ${response.statusCode}');
+                    }
                   } else {
-                    // Erreur : Affichez un message d'erreur ou gérez l'erreur de manière appropriée
-                    print('Erreur lors de l\'ajout de l\'article : ${response.statusCode}');
+                    print('Erreur : Aucun token trouvé dans SharedPreferences');
                   }
                 } catch (e) {
-                  // Gérer l'exception si la requête échoue
                   print('Erreur lors de la connexion au serveur : $e');
                 }
               },
